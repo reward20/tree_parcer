@@ -1,9 +1,9 @@
-from cgitb import strong
 from pathlib import Path
 from collections import defaultdict, deque
 import re
 from shutil import move
 # import pandas as pd
+
 
 class Unnoder():
 
@@ -22,7 +22,7 @@ class Unnoder():
         self.complite_path.mkdir(exist_ok=True)
         self.bucket_path.mkdir(exist_ok=True)
 
-    def move_files_with_name_check(
+    def __move_files_with_name_check(
             self,
             move_file: Path,
             out_path: Path) -> None:
@@ -116,10 +116,8 @@ class Unnoder():
 
         return data_file_dict
 
-            # if list_files:
-            #     restruct_node(list_files)
-
-
+    def test_function(self):
+        return self.__check__nodes_file()
 
 
     def __read_nodes_file(self):
@@ -127,11 +125,130 @@ class Unnoder():
         Read input nodes file in unnodes_path
          return list/dict data nodes
         """
-        pass
+        def read_PDSE(SE1_file: Path) -> defaultdict:
+            """
+                read PDSE file and return info in view dict
+            Args:
+                SE1_file (Path): path for PDSE file
 
-    def test_function(self):
-        self.__check__nodes_file()
+            Raises:
+                KeyError: _description_
+
+            Returns:
+                defaultdict: _description_
+            """
+
+            list_tree = defaultdict(dict)
+            data_list = list()
+            # Переменная если находит строку 
+            # соответствующее регулярному выражению
+            bool_re = False
+            # Открываем файл в нужной кодировке
+            with open(SE1_file, encoding="cp866", mode="r") as file:
+                for line in file:
+                    if bool_re:
+                        # получаем число из строки
+                        count = re.findall(r"^[\d]+$", line)
+                        if count:
+                            data_list.append(int(count[0]))
+                            if data_list.__len__() == 3:
+                                if data_list[1] in list_tree[data_list[0]]:
+                                    print(f"В {data_list[0]} уже есть {data_list[1]}")
+                                    raise KeyError
+                                list_tree[data_list[0]][data_list[1]] = data_list[2]
+                        elif data_list.__len__() == 1:
+                            yz_name = line.strip()
+                            if yz_name not in list_tree.keys():
+                                list_tree[yz_name]
+                        bool_re = False
+                    else:
+                        # получаем массив из строки
+                        # состоящий из значений заключенный в кавычках
+                        data_list = re.findall('"([^,]*)"', line)
+                        if data_list.__len__() > 0:
+                            bool_re = True
+            return list_tree
+    
+    
+    def read_PDPR(self, PR1_file):
+        """
+        Считывает данные из файла с входисотью деталей
+        """
+        temp = list()
+        TB = defaultdict(dict)
+        DT = defaultdict(dict)
+        SD = defaultdict(dict)
+        with open(PR1_file, encoding= "cp866") as file:
+            bool_re = False
+            for line in file:
+                if bool_re:
+                    count = re.findall("^[\d]+$",line) #Добавляем строку 
+                    if count and temp.__len__() >= 3:
+                        count = int(count[0])
+                        if re.fullmatch("^[12]?$",temp[1]):
+                            if len(temp) == 4:
+                                TB[temp[3]][temp[2]] = count
+                        else:
+                            if " " in temp[1]:
+                                SD[temp[2]][temp[1]] = count
+                            else:
+                                DT[temp[2]][temp[1]] = count
+                    bool_re = False
+                else:
+                    temp = (re.findall('"([^,]*)"',line))
+                    if temp.__len__() > 2:
+                        bool_re = True  
+
+        #Чистка от узлов
+        for key, items in tuple(DT.items()):
+            for item in tuple(items):
+                if re.search(".*\.000[A-Z\*]{0,2}$",item):
+                    del DT[key][item]
+
+        return DT, SD, TB
+
+def read_SPRNA(SPRNA_file: Path) -> None:
+    """
+    Считывает файл с наименование стандартных 
+    """
+    temp = list()
+    bool_re = False
+    SPRN = {}
+    with open(SPRNA_file,encoding="cp866") as file:
+        for line in file:
+            if bool_re:
+                #Добавляем строку 
+                SPRN[temp[0]] = line.strip("\n")
+                bool_re = False
+            else:
+                temp = (re.findall('\^SPRNA\("(.*)"\)',line))
+                if temp:
+                    bool_re = True
+    
+    check_list = list(SPRN.values())
+    if len(set(check_list)) != len(check_list):
+        table = defaultdict(list)
+        for key, item in SPRN.items():
+            table[item].append(key)
+        
+        for key, item in table.items():
+            if len(item) > 1:
+                print(f"Дубликаты названий стандартных изделий {item}: {key}")
+                raise KeyError
+    return SPRN
+
+
+
+
+   
+
 
 if __name__ == "__main__":
     Obj = Unnoder()
-    Obj.test_function()
+    test_dict = Obj.test_function()
+
+    test_dict = test_dict.popitem()[1]
+    # print(test_dict)
+    for key, val in (read_SPRNA(test_dict[".SP1"])).items():
+        print(key, val)
+        print()
