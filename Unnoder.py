@@ -168,79 +168,72 @@ class Unnoder():
                         if data_list.__len__() > 0:
                             bool_re = True
             return list_tree
+
+        def read_SPRNA(SPRNA_file: Path) -> dict:
+            """
+            Считывает файл с наименование стандартных 
+            """
+            temp = list()
+            SPRN = dict()
+            with open(SPRNA_file, encoding="cp866", mode="r") as file:
+                for line in file:
+                    if temp:
+                        # Добавляем строку 
+                        SPRN[temp[0]] = line.strip("\n")
+                        temp = []
+                    else:
+                        temp = (re.findall(r'\("(.*)"\)', line))
+
+            if len(set(SPRN.values())) != len(SPRN.values()):
+                table = defaultdict(list)
+                for key, item in SPRN.items():
+                    table[item].append(key)
+
+                for key, item in table.items():
+                    if len(item) > 1:
+                        print("Дубликаты названий стандартных изделий:")
+                        for name_dub in item:
+                            print(f"{name_dub}-> ({key})")
+                raise KeyError
+            return SPRN
+
+
+
+
     
-    
-    def read_PDPR(self, PR1_file):
-        """
-        Считывает данные из файла с входисотью деталей
-        """
-        temp = list()
-        TB = defaultdict(dict)
-        DT = defaultdict(dict)
-        SD = defaultdict(dict)
-        with open(PR1_file, encoding= "cp866") as file:
-            bool_re = False
-            for line in file:
-                if bool_re:
-                    count = re.findall("^[\d]+$",line) #Добавляем строку 
-                    if count and temp.__len__() >= 3:
-                        count = int(count[0])
-                        if re.fullmatch("^[12]?$",temp[1]):
-                            if len(temp) == 4:
-                                TB[temp[3]][temp[2]] = count
-                        else:
-                            if " " in temp[1]:
-                                SD[temp[2]][temp[1]] = count
-                            else:
-                                DT[temp[2]][temp[1]] = count
-                    bool_re = False
-                else:
-                    temp = (re.findall('"([^,]*)"',line))
-                    if temp.__len__() > 2:
-                        bool_re = True  
-
-        #Чистка от узлов
-        for key, items in tuple(DT.items()):
-            for item in tuple(items):
-                if re.search(".*\.000[A-Z\*]{0,2}$",item):
-                    del DT[key][item]
-
-        return DT, SD, TB
-
-def read_SPRNA(SPRNA_file: Path) -> None:
+def read_PDPR(PR1_file: Path):
     """
-    Считывает файл с наименование стандартных 
+    Считывает данные из файла с входисотью деталей
     """
     temp = list()
-    bool_re = False
-    SPRN = {}
-    with open(SPRNA_file,encoding="cp866") as file:
+    TB = defaultdict(dict)
+    DT = defaultdict(dict)
+    SD = defaultdict(dict)
+    with open(PR1_file, encoding="cp866", mode="r") as file:
         for line in file:
-            if bool_re:
-                #Добавляем строку 
-                SPRN[temp[0]] = line.strip("\n")
-                bool_re = False
+            if temp.__len__() > 2:
+                count = re.findall("^[\d]+$", line)  # Добавляем строку
+                if count and temp.__len__() >= 3:
+                    count = int(count[0])
+                    if re.fullmatch("^[12]?$", temp[1]):
+                        if len(temp) == 4:
+                            TB[temp[3]][temp[2]] = count
+                    else:
+                        if " " in temp[1]:
+                            SD[temp[2]][temp[1]] = count
+                        else:
+                            DT[temp[2]][temp[1]] = count
+                temp.clear()
             else:
-                temp = (re.findall('\^SPRNA\("(.*)"\)',line))
-                if temp:
-                    bool_re = True
-    
-    check_list = list(SPRN.values())
-    if len(set(check_list)) != len(check_list):
-        table = defaultdict(list)
-        for key, item in SPRN.items():
-            table[item].append(key)
-        
-        for key, item in table.items():
-            if len(item) > 1:
-                print(f"Дубликаты названий стандартных изделий {item}: {key}")
-                raise KeyError
-    return SPRN
+                temp = (re.findall('"([^,]*)"', line))
 
+    #Чистка от узлов
+    for key, items in tuple(DT.items()):
+        for item in tuple(items):
+            if re.search(r".*\.000[A-Z\*]{0,2}$", item):
+                del DT[key][item]
 
-
-
-   
+    return DT, SD, TB
 
 
 if __name__ == "__main__":
@@ -249,6 +242,8 @@ if __name__ == "__main__":
 
     test_dict = test_dict.popitem()[1]
     # print(test_dict)
-    for key, val in (read_SPRNA(test_dict[".SP1"])).items():
-        print(key, val)
+    for key, val in (read_PDPR(test_dict[".PR1"])).items():
+        print(f"({key}), ({val})")
         print()
+
+    print(re.findall(r".*(?:(?:\*[A-Z]{1}){,1})", "afdf*A"))
