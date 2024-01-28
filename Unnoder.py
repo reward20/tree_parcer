@@ -37,13 +37,16 @@ class Unnoder():
                 move(move_file, out_path / filename)
                 break
 
-    def __check__nodes_file(self):
+    def __check__nodes_file(self) -> dict:
         """Проходит по очереди по всем папкам
         Ищет пары 3 файлов с нужными файлами для потребности узла
         Возвращает словарь с именем потребности в ключе,
         а в значении хранит словарь
         словарь имеет в качестве ключа расширение файла, а в значении его путь
+
+        return: dict с названием потребности и всеми требуемыми файлами
         """
+        
         # Словарь для хранения потребностей и ссылок на файлы
         data_file_dict = defaultdict(dict)
 
@@ -116,11 +119,19 @@ class Unnoder():
 
         return data_file_dict
 
-    def test_function(self):
-        return self.__check__nodes_file()
+    def __check_name_yz(self, name_yz: str) -> bool:
+        """проверяет является ли имя узла подходящим
 
+        Args:
+            name_yz (str): Имя узла
 
-    def __read_nodes_file(self):
+        Returns:
+            bool: True если имя соотвтетсвует,
+                    False не соотетствует
+        """
+        return bool(re.search(r".+\.000(?:\*[A-Z])?$", name_yz))
+
+    def __read_nodes_file(self, file_potreb_tree: dict) -> tuple:
         """
         Read input nodes file in unnodes_path
          return list/dict data nodes
@@ -138,7 +149,7 @@ class Unnoder():
                 defaultdict: _description_
             """
 
-            list_tree = defaultdict(dict)
+            yz_tree = defaultdict(lambda: defaultdict(int))
             data_list = list()
             # Переменная если находит строку 
             # соответствующее регулярному выражению
@@ -152,14 +163,14 @@ class Unnoder():
                         if count:
                             data_list.append(int(count[0]))
                             if data_list.__len__() == 3:
-                                if data_list[1] in list_tree[data_list[0]]:
+                                if data_list[1] in yz_tree[data_list[0]]:
                                     print(f"В {data_list[0]} уже есть {data_list[1]}")
                                     raise KeyError
-                                list_tree[data_list[0]][data_list[1]] = data_list[2]
+                                yz_tree[data_list[0]][data_list[1]] = data_list[2]
                         elif data_list.__len__() == 1:
                             yz_name = line.strip()
-                            if yz_name not in list_tree.keys():
-                                list_tree[yz_name]
+                            if yz_name not in yz_tree.keys():
+                                yz_tree[yz_name]
                         bool_re = False
                     else:
                         # получаем массив из строки
@@ -167,7 +178,7 @@ class Unnoder():
                         data_list = re.findall('"([^,]*)"', line)
                         if data_list.__len__() > 0:
                             bool_re = True
-            return list_tree
+            return yz_tree
 
         def read_SPRNA(SPRNA_file: Path) -> dict:
             """
@@ -184,6 +195,7 @@ class Unnoder():
                     else:
                         temp = (re.findall(r'\("(.*)"\)', line))
 
+            # проверяет на повторение расшифровок у стандартных изделий
             if len(set(SPRN.values())) != len(SPRN.values()):
                 table = defaultdict(list)
                 for key, item in SPRN.items():
@@ -197,53 +209,245 @@ class Unnoder():
                 raise KeyError
             return SPRN
 
+        def read_PDPR(PR1_file: Path):
+            """
+            Считывает данные из файла с входисотью деталей
+            """
+            temp = list()
+            # Словарь с табличками
+            TB = defaultdict(lambda: defaultdict(int))
+            # Словарь с деталями
+            DT = defaultdict(lambda: defaultdict(int))
+            # Словарь со стандартными
+            SD = defaultdict(lambda: defaultdict(int))
 
-
-
-    
-def read_PDPR(PR1_file: Path):
-    """
-    Считывает данные из файла с входисотью деталей
-    """
-    temp = list()
-    TB = defaultdict(dict)
-    DT = defaultdict(dict)
-    SD = defaultdict(dict)
-    with open(PR1_file, encoding="cp866", mode="r") as file:
-        for line in file:
-            if temp.__len__() > 2:
-                count = re.findall("^[\d]+$", line)  # Добавляем строку
-                if count and temp.__len__() >= 3:
-                    count = int(count[0])
-                    if re.fullmatch("^[12]?$", temp[1]):
-                        if len(temp) == 4:
-                            TB[temp[3]][temp[2]] = count
+            with open(PR1_file, encoding="cp866", mode="r") as file:
+                for line in file:
+                    if temp.__len__() > 2:
+                        count = re.findall(r"^[\d]+$", line)  # Добавляем строку
+                        if count and temp.__len__() >= 3:
+                            count = int(count[0])
+                            if re.fullmatch("^[12]?$", temp[1]):
+                                if len(temp) == 4:
+                                    TB[temp[3]][temp[2]] = count
+                            else:
+                                if " " in temp[1]:
+                                    SD[temp[2]][temp[1]] = count
+                                else:
+                                    DT[temp[2]][temp[1]] = count
+                        temp.clear()
                     else:
-                        if " " in temp[1]:
-                            SD[temp[2]][temp[1]] = count
-                        else:
-                            DT[temp[2]][temp[1]] = count
-                temp.clear()
-            else:
-                temp = (re.findall('"([^,]*)"', line))
+                        temp = (re.findall('"([^,]*)"', line))
 
-    #Чистка от узлов
-    for key, items in tuple(DT.items()):
-        for item in tuple(items):
-            if re.search(r".*\.000[A-Z\*]{0,2}$", item):
-                del DT[key][item]
+            # Чистка от узлов
+            for key, items in tuple(DT.items()):
+                for item in tuple(items):
+                    if self.__check_name_yz(item):
+                        del DT[key][item]
 
-    return DT, SD, TB
+            return DT, SD, TB
 
+        def merge_sd(sd_tree: dict, name_sd: dict) -> dict:
+            """Заменяет именя ключей в sd_tree
+            на имена ключей в sd_name
+
+            Args:
+                sd_tree (dict): словарь со стандартными
+                name_sd (dict): словарь с именами ключей
+
+            Returns:
+                dict: sd_tree c измененными именами ключей
+            """
+            
+            for val in sd_tree.values():
+                for name in tuple(val.keys()):
+                    if name not in name_sd.keys():
+                        continue
+                    val[name_sd.pop(name)] = val.pop(name)
+            return sd_tree
+
+        def transfer_SV_Y(yz_tree: dict, dt_tree: dict) -> dict:
+            """Убирает сварные из поузловой входимости
+            переносит их в разряд деталей
+            возвращает словарь со сварными деталями
+
+            Args:
+                yz_tree (dict): Словарь с поузловой входимостью
+                dt_tree (dict): Словарь с подетальной входимостью
+
+            Returns:
+                dict: Словарь со сварными узлами
+            """
+            
+            sv_y_tree = defaultdict(list)
+            # пересмоттреть
+
+            def transver_to_dtTree(name_yz, val, mul_count=1):
+                nonlocal yz_tree
+                nonlocal dt_tree
+
+                for yz, count in val.items():
+                    if self.__check_name_yz(yz):
+                        continue
+                    # Если входящая деталь является узлом
+
+                    elif yz in yz_tree.keys():
+                        count *= mul_count
+                        transver_to_dtTree(
+                            name_yz,
+                            yz_tree[yz],
+                            mul_count=count)
+                    count *= mul_count
+                    if not re.search(r"\*[A-Z]?$", yz):
+                        dt_tree[name_yz][yz] += count
+
+                    for key, val in dt_tree[yz].items():
+                        dt_tree[name_yz][key] += val * count
+
+            # Перенос сварных в детали
+            for main_yz, val in yz_tree.items():
+                # Если это не обычный узел
+                if not self.__check_name_yz(main_yz):
+                    continue
+                transver_to_dtTree(main_yz, val)
+                
+
+                
+
+
+
+
+
+
+
+        YZ_tree = defaultdict(dict)
+        DT_tree = defaultdict(dict)
+        TB_tree = defaultdict(dict)
+        SD_name = defaultdict(dict)
+
+        for potreb_name, files in file_potreb_tree.items():
+            get_yz = read_PDSE(files[".SE1"])
+            get_sd_name = read_SPRNA(files[".SP1"])
+            get_dt, get_sd, get_tb = read_PDPR(files[".PR1"])
+            # Кореекция get_sd (переименовывание стандартных деталей)
+            get_sd = merge_sd(get_sd, get_sd_name)
+            del get_sd_name
+            # Перенос сварных узлов
+            # return get_yz
+            transfer_SV_Y(get_yz, get_dt)
+
+
+            # print()
+            # print(get_yz)
+
+    def test_function(self):
+        files_dict = self.__check__nodes_file()
+        return self.__read_nodes_file(files_dict)
+        
+
+
+
+def view_dict_date(dict_date: dict) -> None:
+
+    for key, val in dict_date.items():
+        print(" ", "_"*41, " ", sep="")
+        line = "'{0}'".format(key)
+
+        print(f"|{line:^41}|")
+        print("|", "-"*41, "|", sep="")
+        if isinstance(val, dict):
+            for key, count in val.items():
+                key = f"'{key}'"
+                print(f"|{key:<35}|{count:^5}|")
+        else:
+            key = f"'{val}'"
+            print(f"|{key:<41}|")
+        print("‾"*43)
+
+
+
+def transfer_SV_Y(yz_tree: dict, dt_tree: dict) -> dict:
+    """Убирает сварные из поузловой входимости
+    переносит их в разряд деталей
+    возвращает словарь со сварными деталями
+
+    Args:
+        yz_tree (dict): Словарь с поузловой входимостью
+        dt_tree (dict): Словарь с подетальной входимостью
+
+    Returns:
+        dict: Словарь со сварными узлами
+    """
+    
+    sv_y_tree = defaultdict(list)
+    # пересмоттреть
+    def transver_to_dtTree(name_yz, val, mul_count=1):
+        nonlocal yz_tree
+        nonlocal dt_tree
+
+        for yz, count in val.items():
+            if re.search(r".+\.000(?:\*[A-Z])?$", yz):
+                continue
+            # Если входящая деталь является узлом
+            elif yz in yz_tree.keys():
+                count *= mul_count
+                # dt_tree[name_yz][yz] = count
+                transver_to_dtTree(
+                    name_yz,
+                    yz_tree[yz],
+                    mul_count=count)
+            count *= mul_count
+            if not re.search(r"\*[A-Z]?$", yz):
+                dt_tree[name_yz][yz] += count
+
+            for key, val in dt_tree[yz].items():
+                dt_tree[name_yz][key] += val * count
+
+    # Перенос сварных в детали
+    for main_yz, val in yz_tree.items():
+        # Если это не обычный узел
+        if not re.search(r".+\.000(?:\*[A-Z])?$", main_yz):
+            continue
+        transver_to_dtTree(main_yz, val)
 
 if __name__ == "__main__":
+    # i = {1: {1:3, 2:2, 3:3},}
+    # for item in i.values():
+    #     print(4 in item.keys())
+    # print(i)
     Obj = Unnoder()
     test_dict = Obj.test_function()
+    view_dict_date(test_dict)
+    # print(re.findall(r".+\.000(?:\*[A-Z])?$", r"fdsfds.000"))
 
-    test_dict = test_dict.popitem()[1]
-    # print(test_dict)
-    for key, val in (read_PDPR(test_dict[".PR1"])).items():
-        print(f"({key}), ({val})")
-        print()
+    # yz_test = dict()
+    # yz_test.update({"yz_1.000": {
+    #                 "yz.000": 2, 
+    #                 "yz_sv_y": 3,
+    #                 "yz_sv": 4},
 
-    print(re.findall(r".*(?:(?:\*[A-Z]{1}){,1})", "afdf*A"))
+    #             "yz_sv_y": {
+    #                 "yz_sv_I":3
+    #             }})
+    
+
+    # dt_test = {"yz_1.000": {
+    #                     "det_1": 2,
+    #                     "det_2": 3,
+    #                     },
+    #             "yz_sv_y": {
+    #                 "det_y_1": 3,
+    #                 "det_y_2": 2
+    #             },
+    #             "yz_sv": {
+    #                 "det_sv_1": 4,
+    #                 "det_sv_2": 1
+    #             },
+    #             "yz_sv_I": {
+    #                 "det_I_1": 2,
+    #                 "det_I_2": 3
+    #             },
+    # }
+    # dt_test = defaultdict(lambda: defaultdict(int), dt_test)
+    # transfer_SV_Y(yz_test, dt_test)
+    # view_dict_date(dt_test)
