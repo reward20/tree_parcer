@@ -1,5 +1,7 @@
+from os import name
 from pathlib import Path
 from collections import defaultdict, deque
+from pkgutil import extend_path
 import re
 from shutil import move
 # import pandas as pd
@@ -278,11 +280,19 @@ class Unnoder():
             Returns:
                 dict: Словарь со сварными узлами
             """
-            
-            sv_y_tree = defaultdict(list)
+
+            sv_y_tree = defaultdict(dict)
+            sv_d_tree = defaultdict(lambda: defaultdict(int))
             # пересмоттреть
 
-            def transver_to_dtTree(name_yz, val, mul_count=1):
+            def transver_to_dtTree(name_yz: str, val: dict, mul_count=1):
+                """Переносит в детали узлов, сварные детали
+
+                Args:
+                    name_yz (str): Имя родительского узла
+                    val (dict): Словарь с подъузлами родительского узла
+                    mul_count (int, optional): коэфициент умножения для подъузлов. Defaults to 1.
+                """
                 nonlocal yz_tree
                 nonlocal dt_tree
 
@@ -298,11 +308,40 @@ class Unnoder():
                             yz_tree[yz],
                             mul_count=count)
                     count *= mul_count
+                    # Проверка на заимствованные сварные узлы
                     if not re.search(r"\*[A-Z]?$", yz):
                         dt_tree[name_yz][yz] += count
 
                     for key, val in dt_tree[yz].items():
                         dt_tree[name_yz][key] += val * count
+
+            def generate_SV_Y(name_yz: str, val: dict):
+                """Копирует узлы и детали сварных узлов в отдельные таблицы
+                Args:
+                    name_yz (str): _description_
+                    val (dict): _description_
+                """
+                nonlocal yz_tree
+                nonlocal dt_tree
+                nonlocal sv_y_tree
+                nonlocal sv_d_tree
+
+                for yz, count in val.items():
+                    if self.__check_name_yz(yz):
+                        continue
+
+                    elif yz in yz_tree.keys():
+                        generate_SV_Y(yz, yz_tree[yz])
+                    
+                    # if not re.search(r"\*[A-Z]?$", yz):
+                        
+                    sv_y_tree[name_yz][yz] = count
+                    sv_d_tree[yz].update(dt_tree[yz])
+                    # for key, val in dt_tree[yz].items():
+                    #     sv_d_tree[yz][key] = val
+
+
+
 
             # Перенос сварных в детали
             for main_yz, val in yz_tree.items():
@@ -310,16 +349,19 @@ class Unnoder():
                 if not self.__check_name_yz(main_yz):
                     continue
                 transver_to_dtTree(main_yz, val)
+                generate_SV_Y(main_yz, val)
+
+            for key in sv_d_tree.keys():
+                try:
+                    del yz_tree[key]
+                except KeyError:
+                    pass
+                del dt_tree[key]
                 
 
-                
 
-
-
-
-
-
-
+            return sv_d_tree
+ 
         YZ_tree = defaultdict(dict)
         DT_tree = defaultdict(dict)
         TB_tree = defaultdict(dict)
@@ -333,8 +375,9 @@ class Unnoder():
             get_sd = merge_sd(get_sd, get_sd_name)
             del get_sd_name
             # Перенос сварных узлов
-            # return get_yz
-            transfer_SV_Y(get_yz, get_dt)
+            sv_y_tree = transfer_SV_Y(get_yz, get_dt)
+            return sv_y_tree
+            
 
 
             # print()
