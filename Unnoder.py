@@ -1,4 +1,3 @@
-from os import name
 from pathlib import Path
 from collections import defaultdict, deque
 import re
@@ -295,7 +294,7 @@ class Unnoder():
 
         def merge_sd(sd_tree: dict, name_sd: dict) -> dict:
             """Заменяет именя ключей в sd_tree
-            на имена ключей в sd_name
+            на имена ключей в name_sd
 
             Args:
                 sd_tree (dict): словарь со стандартными
@@ -304,7 +303,7 @@ class Unnoder():
             Returns:
                 dict: sd_tree c измененными именами ключей
             """
-            
+
             for val in sd_tree.values():
                 for name in tuple(val.keys()):
                     if name not in name_sd.keys():
@@ -329,37 +328,43 @@ class Unnoder():
             sv_d_tree = defaultdict(lambda: defaultdict(int))
             # пересмоттреть
 
-            def transver_to_dtTree(name_yz: str, val: dict, mul_count=1):
-                """Переносит в детали узлов, сварные детали
+            def transver_to_dtTree(name_yz: str):
+                """Переносит сварные детали в детали узлов
 
                 Args:
                     name_yz (str): Имя родительского узла
                     val (dict): Словарь с подъузлами родительского узла
-                    mul_count (int, optional): коэфициент умножения для под]узлов. Defaults to 1.
+                    mul_count (int, optional): коэфициент умножения для подъузлов. Defaults to 1.
                 """
                 nonlocal yz_tree
                 nonlocal dt_tree
+                # Если сварной узел является заимствованным то ничего не делать
+                if re.search(r"\*[A-Z]?$", name_yz):
+                    return None
+                # Если сварной узел не считается как деталь то добавить
+                elif name_yz not in dt_tree[name_yz].keys():
+                    dt_tree[name_yz][name_yz] = 1
 
-                for yz, count in val.items():
-                    if self.__check_name_yz(yz):
-                        continue
-                    # Если входящая деталь является узлом
 
-                    elif yz in yz_tree.keys():
-                        transver_to_dtTree(
-                            name_yz,
-                            yz_tree[yz],
-                            mul_count=count*mul_count)
-                    count *= mul_count
-                    # Проверка на заимствованные сварные узлы
-                    if not re.search(r"\*[A-Z]?$", yz):
-                        dt_tree[name_yz][yz] += count
+                # for dt_sv in dt_tree[name_yz].keys():
+                #     # Если сварной нет в перечне деталей то добавить
+                #     if dt_sv not in :
+                        
+                        
+                    # count *= mul_count
+                    # Если это не заимствованный сварной узел 
+                    # то добавить его как деталь
+                    
+                    # Добавить в детали сварного самого себя
+                    # Так как сварной одновременно является еще и деталью
+                        
 
-                    for key, val in dt_tree[yz].items():
-                        dt_tree[name_yz][key] += val * count
+                    # for key, val in dt_tree[yz].items():
+                    #     dt_tree[name_yz][key] += val * count
 
-            def generate_SV_Y(name_yz: str, val: dict):
-                """Копирует узлы и детали сварных узлов в отдельные таблицы
+            def generate_SV_Y(name_yz: str):
+                """Копирует узлы и детали сварных узлов в сварные таблицы и
+                удаляет из основных таблиц
                 Args:
                     name_yz (str): _description_
                     val (dict): _description_
@@ -367,17 +372,20 @@ class Unnoder():
                 nonlocal yz_tree
                 nonlocal dt_tree
                 nonlocal sv_y_tree
-                nonlocal sv_d_tree
 
-                for yz, count in tuple(val.items()):
-                    if self.__check_name_yz(yz):
+                for sv_yz, count in yz_tree[name_yz].items():
+                    # Если узел то не трогать
+                    if self.__check_name_yz(sv_yz):
                         continue
+                    else:
+                        sv_y_tree[name_yz][sv_yz] = count
 
+                    # Если сварной является узлом
                     elif yz in yz_tree.keys():
                         generate_SV_Y(yz, yz_tree[yz])
                     
                     # if not re.search(r"\*[A-Z]?$", yz):
-                        
+                    # Перенос таблицы сварного узла
                     sv_y_tree[name_yz][yz] = count
                     del yz_tree[name_yz][yz]
                     sv_d_tree[yz].update(dt_tree[yz])
@@ -389,17 +397,17 @@ class Unnoder():
 
 
             # Перенос сварных в детали
-            for main_yz, val in yz_tree.items():
+            for main_yz in yz_tree.keys():
                 # Если это не обычный узел
-                if not self.__check_name_yz(main_yz):
+                if self.__check_name_yz(main_yz):
                     continue
-                transver_to_dtTree(main_yz, val)
+                transver_to_dtTree(main_yz)
 
-            for main_yz, val in yz_tree.items():
-                # Если это не обычный узел
-                if not self.__check_name_yz(main_yz):
-                    continue
-                generate_SV_Y(main_yz, val)
+            # for main_yz, val in yz_tree.items():
+            #     # Если это не обычный узел
+            #     if not self.__check_name_yz(main_yz):
+            #         continue
+            #     generate_SV_Y(main_yz, val)
 
             # for yz_n, val_sv in sv_y_tree.items():
             #     for key_sv in val_sv.keys():
@@ -472,39 +480,14 @@ if __name__ == "__main__":
     # for item in i.values():
     #     print(4 in item.keys())
     # print(i)
-    Obj = Unnoder()
-    test_dict = Obj.test_function()
-    list(map(view_dict_date, test_dict))
-    # print(re.findall(r".+\.000(?:\*[A-Z])?$", r"fdsfds.000"))
 
-    # yz_test = dict()
-    # yz_test.update({"yz_1.000": {
-    #                 "yz.000": 2, 
-    #                 "yz_sv_y": 3,
-    #                 "yz_sv": 4},
 
-    #             "yz_sv_y": {
-    #                 "yz_sv_I":3
-    #             }})
-    
 
-    # dt_test = {"yz_1.000": {
-    #                     "det_1": 2,
-    #                     "det_2": 3,
-    #                     },
-    #             "yz_sv_y": {
-    #                 "det_y_1": 3,
-    #                 "det_y_2": 2
-    #             },
-    #             "yz_sv": {
-    #                 "det_sv_1": 4,
-    #                 "det_sv_2": 1
-    #             },
-    #             "yz_sv_I": {
-    #                 "det_I_1": 2,
-    #                 "det_I_2": 3
-    #             },
-    # }
-    # dt_test = defaultdict(lambda: defaultdict(int), dt_test)
-    # transfer_SV_Y(yz_test, dt_test)
-    # view_dict_date(dt_test)
+    # Obj = Unnoder()
+    # test_dict = Obj.test_function()
+    # list(map(view_dict_date, test_dict))
+
+    table = defaultdict(lambda: defaultdict(int))
+    table["count"]["num"] += 2
+    table["count"]["num"] = 1
+    view_dict_date(table)
