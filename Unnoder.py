@@ -2,7 +2,8 @@ from pathlib import Path
 from collections import defaultdict, deque
 import re
 from shutil import move
-# import pandas as pd
+from xml.sax import default_parser_list
+import pandas as pd
 
 
 class Unnoder():
@@ -16,11 +17,24 @@ class Unnoder():
         self.complite_path = Path("complite_nodes")
         # Where stored bad nodes file
         self.bucket_path = Path("trash_file")
+        # Место хранения баз данных
+        self.base = Path("base")
+
+        self.csv_path = {"yz": self.base/"yz.csv",
+                         "dt": self.base/"dt.csv",
+                         "sd": self.base/"sd.csv",
+                         "tb": self.base/"td.csv"}
+
+        self.name_col = {"yz": ("Узел_Р", "Узел", "Кол."),
+                         "dt": ("Узел_Р", "Деталь", "Кол."),
+                         "sd": ("Узел_Р", "СД_деталь", "Кол."),
+                         "tb": ("Узел_Р", "Табличка", "Кол.")}
 
         self.unnodes_path.mkdir(exist_ok=True)
         self.store_data_path.mkdir(exist_ok=True)
         self.complite_path.mkdir(exist_ok=True)
         self.bucket_path.mkdir(exist_ok=True)
+        self.base.mkdir(exist_ok=True)
 
     def __move_files_with_name_check(
             self,
@@ -72,7 +86,7 @@ class Unnoder():
             """Возвращает словарь с потребностями и списками их файлов
 
             Args:
-                list_files (list): _description_
+                list_files (list): список файлов
 
             Returns:
                 dict: {Потребность : {Суффикс : Путь до файла}}
@@ -97,8 +111,8 @@ class Unnoder():
                 updated_dict: defaultdict,
                 input_dict: defaultdict
                 ) -> None:
-            """Обновляет updated_dict, значениями из input_dict
-            Изменяет имена ключей в случае совпадений
+            """Добавляет потребность в основной словарь
+            если имя потребности уже есть то тогда присвоить новое имя
 
             Args:
                 updated_dict (defaultdict): обновляемый словарь с потребностями
@@ -126,8 +140,9 @@ class Unnoder():
             list_files, list_dir = check_file_or_dir(check_dir)
             # Добавляю папки в очередь
             deque_dir.extend(list_dir)
-            # Получаю словарь потребностей со всеми тремя файлами в каждом
+            # Получаю словарь потребностей с тремя файлами в каждом
             temp_dict = restruct_node(list_files)
+            # Обновляю файлы
             update_main_dict_files(data_file_dict, temp_dict)
  
         return data_file_dict
@@ -285,10 +300,10 @@ class Unnoder():
                         temp = (re.findall('"([^,]*)"', line))
 
             # Чистка списка деталей от узлов
-            for key, items in tuple(DT.items()):
-                for item in tuple(items):
-                    if self.__check_name_yz(item):
-                        del DT[key][item]
+            # for key, items in tuple(DT.items()):
+            #     for item in tuple(items):
+            #         if self.__check_name_yz(item):
+            #             del DT[key][item]
 
             return DT, SD, TB
 
@@ -311,151 +326,112 @@ class Unnoder():
                     val[name_sd.pop(name)] = val.pop(name)
             return sd_tree
 
-        def transfer_SV_Y(yz_tree: dict, dt_tree: dict) -> dict:
-            """Убирает сварные из поузловой входимости
-            переносит их в разряд деталей
-            возвращает словарь со сварными деталями
-
-            Args:
-                yz_tree (dict): Словарь с поузловой входимостью
-                dt_tree (dict): Словарь с подетальной входимостью
-
-            Returns:
-                dict: Словарь со сварными узлами
-            """
-
-            sv_y_tree = defaultdict(dict)
-            sv_d_tree = defaultdict(lambda: defaultdict(int))
-            # пересмоттреть
-
-            def transver_to_dtTree(name_yz: str):
-                """Переносит сварные детали в детали узлов
-
-                Args:
-                    name_yz (str): Имя родительского узла
-                    val (dict): Словарь с подъузлами родительского узла
-                    mul_count (int, optional): коэфициент умножения для подъузлов. Defaults to 1.
-                """
-                nonlocal yz_tree
-                nonlocal dt_tree
-                # Если сварной узел является заимствованным то ничего не делать
-                if re.search(r"\*[A-Z]?$", name_yz):
-                    return None
-                # Если сварной узел не считается как деталь то добавить
-                elif name_yz not in dt_tree[name_yz].keys():
-                    dt_tree[name_yz][name_yz] = 1
-
-
-                # for dt_sv in dt_tree[name_yz].keys():
-                #     # Если сварной нет в перечне деталей то добавить
-                #     if dt_sv not in :
-                        
-                        
-                    # count *= mul_count
-                    # Если это не заимствованный сварной узел 
-                    # то добавить его как деталь
-                    
-                    # Добавить в детали сварного самого себя
-                    # Так как сварной одновременно является еще и деталью
-                        
-
-                    # for key, val in dt_tree[yz].items():
-                    #     dt_tree[name_yz][key] += val * count
-
-            def generate_SV_Y(name_yz: str):
-                """Копирует узлы и детали сварных узлов в сварные таблицы и
-                удаляет из основных таблиц
-                Args:
-                    name_yz (str): _description_
-                    val (dict): _description_
-                """
-                nonlocal yz_tree
-                nonlocal dt_tree
-                nonlocal sv_y_tree
-
-                for sv_yz, count in yz_tree[name_yz].items():
-                    # Если узел то не трогать
-                    if self.__check_name_yz(sv_yz):
-                        continue
-                    else:
-                        sv_y_tree[name_yz][sv_yz] = count
-
-                    # Если сварной является узлом
-                    elif yz in yz_tree.keys():
-                        generate_SV_Y(yz, yz_tree[yz])
-                    
-                    # if not re.search(r"\*[A-Z]?$", yz):
-                    # Перенос таблицы сварного узла
-                    sv_y_tree[name_yz][yz] = count
-                    del yz_tree[name_yz][yz]
-                    sv_d_tree[yz].update(dt_tree[yz])
-                    del dt_tree[yz]
-                    # for key, val in dt_tree[yz].items():
-                    #     sv_d_tree[yz][key] = val
-
-
-
-
-            # Перенос сварных в детали
-            for main_yz in yz_tree.keys():
-                # Если это не обычный узел
-                if self.__check_name_yz(main_yz):
-                    continue
-                transver_to_dtTree(main_yz)
-
-            # for main_yz, val in yz_tree.items():
-            #     # Если это не обычный узел
-            #     if not self.__check_name_yz(main_yz):
-            #         continue
-            #     generate_SV_Y(main_yz, val)
-
-            # for yz_n, val_sv in sv_y_tree.items():
-            #     for key_sv in val_sv.keys():
-            #         del yz_tree[yz_n][key_sv]
-            #         try:
-            #             del yz_tree[key_sv]
-            #         except KeyError:
-            #             pass
-
-
-            # for key in sv_d_tree.keys():
-            #     try:
-            #         del yz_tree[key]
-            #         del yz_tree[]
-            #     except KeyError:
-            #         pass
-            #     del dt_tree[key]
-                
-
-
-            return sv_d_tree
- 
         YZ_tree = defaultdict(dict)
         DT_tree = defaultdict(dict)
         TB_tree = defaultdict(dict)
         SD_name = defaultdict(dict)
 
-        for potreb_name, files in file_potreb_tree.items():
-            get_yz = read_PDSE(files[".SE1"])
+        for files in file_potreb_tree.values():
+            YZ_tree.update(read_PDSE(files[".SE1"]))
             get_sd_name = read_SPRNA(files[".SP1"])
-            get_dt, get_sd, get_tb = read_PDPR(files[".PR1"])
-            # Кореекция get_sd (переименовывание стандартных деталей)
-            get_sd = merge_sd(get_sd, get_sd_name)
+            # Возвращает 3 таблицы в кортеже
+            temp_tuple = read_PDPR(files[".PR1"])
+            DT_tree.update(temp_tuple[0])
+            SD_name.update(temp_tuple[1])
+            TB_tree.update(temp_tuple[2])
+            # Корекция SD_name (переименовывание стандартных деталей)
+            SD_name = merge_sd(SD_name, get_sd_name)
             del get_sd_name
             # Перенос сварных узлов
-            sv_y_tree = transfer_SV_Y(get_yz, get_dt)
-            return get_dt, get_yz
-            
-
+            # sv_y_tree = transfer_SV_Y(YZ_tree, DT_tree)
+        return YZ_tree, DT_tree, SD_name, TB_tree
 
             # print()
             # print(get_yz)
 
-    def test_function(self):
-        files_dict = self.__check__nodes_file()
-        return self.__read_nodes_file(files_dict)
-        
+    def dict_to_csv(self, table: dict, csv_path: Path, name_columns=list) -> None:
+        """Записывает переданный словарь в csv_file
 
+        Args:
+            table (dict): Записываемый словарь
+            csv_path (Path): Путь до csv файла
+            name_columns(list|None): Список с названиями столбцов
+        """
+        def CSV_type_converter() -> dict:
+            """Преобразовует словарь в словарь подходящий для записи в CSV
+
+            Returns:
+                dict: подходящий словарь для csv
+            """
+            nonlocal table
+            nonlocal name_columns
+            csv_dict = defaultdict(list)
+            csv_dict[name_columns[0]]
+            csv_dict[name_columns[1]]
+            csv_dict[name_columns[2]]
+
+            if not len(name_columns) == 3:
+                raise IndexError("Len name_columns need == 3")
+
+            for key, val in table.items():
+                for key_in, count in val.items():
+                    csv_dict[name_columns[0]].append(key)
+                    csv_dict[name_columns[1]].append(key_in)
+                    csv_dict[name_columns[2]].append(count)
+            return csv_dict
+
+        def write_to_csv(csv_dict: dict) -> None:
+            """Записывает в словарь в csv файл
+
+            Args:
+                csv_dict (dict): подходящий словарь для csv
+            """
+            nonlocal csv_path
+            data = pd.DataFrame(csv_dict)
+            data.to_csv(csv_path, sep="^", encoding="cp866", index=False)
+            print(data.head(20))
+
+        dict_csv = CSV_type_converter()
+        write_to_csv(dict_csv)
+
+    def csv_to_dict(self, path_csv: Path) -> dict:
+        return_table = defaultdict(dict)
+        if not path_csv.exists():
+            return return_table
+
+        table = pd.read_csv(path_csv, sep="^", encoding="cp866", dtype=str)
+
+        for lst in table.to_dict(orient="split")["data"]:
+            return_table[lst[0]][lst[1]] = lst[2]
+        return return_table
+
+    def update_main_tree(self, dict_list: dict):
+        """Обновляет данные из csv файла и записывает обратно
+
+        Args:
+            dict_list (dict): словарь с таблицами
+        """
+        for key, table in dict_list.items():
+            up_table = self.csv_to_dict(self.csv_path[key])
+            up_table.update(table)
+            self.dict_to_csv(
+                up_table,
+                self.csv_path[key],
+                self.name_col[key])
+
+    def main_update(self):
+
+        # Получил словарь с потребностями
+        files_dict = self.__check__nodes_file()
+        # Получил таблицы из прочитанных файлов
+        YZ_tree, DT_tree, SD_name, TB_tree = self.__read_nodes_file(files_dict)
+        constr_dict = {"yz": YZ_tree,
+                       "dt": DT_tree,
+                       "sd": SD_name,
+                       "tb": TB_tree}
+        self.update_main_tree(constr_dict)
+
+        return YZ_tree, DT_tree, SD_name, TB_tree
 
 
 def view_dict_date(dict_date: dict) -> None:
@@ -474,20 +450,24 @@ def view_dict_date(dict_date: dict) -> None:
             key = f"'{val}'"
             print(f"|{key:<41}|")
         print("‾"*43)
+    print("-"*80)
+    print("-"*80)
 
 if __name__ == "__main__":
     # i = {1: {1:3, 2:2, 3:3},}
     # for item in i.values():
     #     print(4 in item.keys())
     # print(i)
+    Obj = Unnoder()
+    Obj.main_update()
 
+    # if isinstance(test_dict,  tuple):
+    #     list(map(view_dict_date, test_dict))
+    # else:
+    #     view_dict_date(test_dict)
+    # 
 
-
-    # Obj = Unnoder()
-    # test_dict = Obj.test_function()
-    # list(map(view_dict_date, test_dict))
-
-    table = defaultdict(lambda: defaultdict(int))
-    table["count"]["num"] += 2
-    table["count"]["num"] = 1
-    view_dict_date(table)
+    # table = defaultdict(lambda: defaultdict(int))
+    # table["count"]["num"] += 2
+    # table["count"]["num"] = 1
+    # view_dict_date(table)
